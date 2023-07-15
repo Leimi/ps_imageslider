@@ -24,6 +24,7 @@ class Ps_HomeSlide extends ObjectModel
     public $url;
     public $legend;
     public $image;
+    public $video;
     public $active;
     public $position;
     public $id_shop;
@@ -45,6 +46,7 @@ class Ps_HomeSlide extends ObjectModel
             'legend' => ['type' => self::TYPE_STRING, 'lang' => true, 'validate' => 'isCleanHtml', 'size' => 255],
             'url' => ['type' => self::TYPE_STRING, 'lang' => true, 'validate' => 'isUrl', 'size' => 255],
             'image' => ['type' => self::TYPE_STRING, 'lang' => true, 'validate' => 'isCleanHtml', 'size' => 255],
+            'video' => ['type' => self::TYPE_STRING, 'lang' => true, 'validate' => 'isCleanHtml', 'size' => 255],
         ],
     ];
 
@@ -72,6 +74,13 @@ class Ps_HomeSlide extends ObjectModel
                 if ($image && file_exists(__DIR__ . '/images/' . $image)) {
                     $res &= @unlink(__DIR__ . '/images/' . $image);
                 }
+            }
+        }
+
+        $videos = $this->video;
+        foreach ($videos as $video) {
+            if ($video && file_exists(__DIR__ . '/images/' . $video)) {
+                $res &= @unlink(__DIR__ . '/images/' . $video);
             }
         }
 
