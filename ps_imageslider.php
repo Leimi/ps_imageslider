@@ -53,15 +53,15 @@ class Ps_ImageSlider extends Module implements WidgetInterface
         $this->name = 'ps_imageslider';
         $this->tab = 'front_office_features';
         $this->version = '3.1.3';
-        $this->author = 'PrestaShop';
+        $this->author = 'PrestaShop - modifications par Emmanuel Pelletier';
         $this->need_instance = 0;
         $this->secure_key = Tools::hash($this->name);
         $this->bootstrap = true;
 
         parent::__construct();
 
-        $this->displayName = $this->trans('Image slider', [], 'Modules.Imageslider.Admin');
-        $this->description = $this->trans('Add sliding images to your homepage to welcome your visitors in a visual and friendly way.', [], 'Modules.Imageslider.Admin');
+        $this->displayName = $this->trans("Diaporama d'images et vidéos", [], 'Modules.Imageslider.Admin');
+        $this->description = $this->trans("Ajoutez un diaporama d'images et vidéos à votre page d'accueil pour souhaiter la bienvenue à vos visiteurs de façon visuelle et attrayante", [], 'Modules.Imageslider.Admin');
         $this->ps_versions_compliancy = ['min' => '1.7.4.0', 'max' => _PS_VERSION_];
 
         $this->templateFile = 'module:ps_imageslider/views/templates/hook/slider.tpl';
@@ -208,6 +208,7 @@ class Ps_ImageSlider extends Module implements WidgetInterface
               `legend` varchar(255) NOT NULL,
               `url` varchar(255) NOT NULL,
               `image` varchar(255) NOT NULL,
+              `video` varchar(255) NOT NULL,
               PRIMARY KEY (`id_homeslider_slides`,`id_lang`)
             ) ENGINE=' . _MYSQL_ENGINE_ . ' DEFAULT CHARSET=UTF8;
         ');
@@ -319,7 +320,7 @@ class Ps_ImageSlider extends Module implements WidgetInterface
                     $errors[] = $this->trans('Invalid slide ID', [], 'Modules.Imageslider.Admin');
                 }
             }
-            /* Checks title/url/legend/description/image */
+            /* Checks title/url/legend/description/image/video */
             $languages = Language::getLanguages(false);
             foreach ($languages as $language) {
                 if (Tools::strlen(Tools::getValue('title_' . $language['id_lang'])) > 255) {
@@ -340,12 +341,15 @@ class Ps_ImageSlider extends Module implements WidgetInterface
                 if (Tools::getValue('image_' . $language['id_lang']) != null && !Validate::isFileName(Tools::getValue('image_' . $language['id_lang']))) {
                     $errors[] = $this->trans('Invalid filename.', [], 'Modules.Imageslider.Admin');
                 }
+                if (Tools::getValue('video_' . $language['id_lang']) != null && !Validate::isFileName(Tools::getValue('video_' . $language['id_lang']))) {
+                    $errors[] = $this->trans('Invalid filename.', [], 'Modules.Imageslider.Admin');
+                }
                 if (Tools::getValue('image_old_' . $language['id_lang']) != null && !Validate::isFileName(Tools::getValue('image_old_' . $language['id_lang']))) {
                     $errors[] = $this->trans('Invalid filename.', [], 'Modules.Imageslider.Admin');
                 }
             }
 
-            /* Checks title/legend/description for default lang */
+            /* Checks title/url/legend/description for default lang */
             $id_lang_default = (int) Configuration::get('PS_LANG_DEFAULT');
             if (!Tools::isSubmit('has_picture') && (!isset($_FILES['image_' . $id_lang_default]) || empty($_FILES['image_' . $id_lang_default]['tmp_name']))) {
                 $errors[] = $this->trans('The image is not set.', [], 'Modules.Imageslider.Admin');
@@ -501,6 +505,28 @@ class Ps_ImageSlider extends Module implements WidgetInterface
                     $slide->image[$language['id_lang']] = $salt . '_' . $_FILES['image_' . $language['id_lang']]['name'];
                 } elseif (Tools::getValue('image_old_' . $language['id_lang']) != '') {
                     $slide->image[$language['id_lang']] = Tools::getValue('image_old_' . $language['id_lang']);
+                }
+
+                /* Uploads video and sets slide */
+                if (isset($_FILES['video_' . $language['id_lang']]) &&
+                    isset($_FILES['video_' . $language['id_lang']]['type']) &&
+                    $_FILES['video_' . $language['id_lang']]['type'] === 'video/mp4' &&
+                    !empty($_FILES['video_' . $language['id_lang']]['tmp_name'])
+                ) {
+                    $temp_name = tempnam(_PS_TMP_IMG_DIR_, 'PS');
+                    $salt = sha1(microtime());
+                    if (!$temp_name || !move_uploaded_file($_FILES['video_' . $language['id_lang']]['tmp_name'], $temp_name)) {
+                        return false;
+                    } elseif (!file_put_contents(
+                         __DIR__ . '/images/' . $salt . '_' . $_FILES['video_' . $language['id_lang']]['name'],
+                       file_get_contents($temp_name)
+                    )) {
+                        $errors[] = $this->displayError($this->getTranslator()->trans('An error occurred during the video upload process.', [], 'Admin.Notifications.Error'));
+                    }
+                    if (file_exists($temp_name)) {
+                        @unlink($temp_name);
+                    }
+                    $slide->video[$language['id_lang']] = $salt . '_' . $_FILES['video_' . $language['id_lang']]['name'];
                 }
             }
 
@@ -667,7 +693,7 @@ class Ps_ImageSlider extends Module implements WidgetInterface
 
         $slides = Db::getInstance((bool) _PS_USE_SQL_SLAVE_)->executeS(
             'SELECT hs.`id_homeslider_slides` as id_slide, hss.`position`, hss.`active`, hssl.`title`,
-            hssl.`url`, hssl.`legend`, hssl.`description`, hssl.`image`
+            hssl.`url`, hssl.`legend`, hssl.`description`, hssl.`image`, hssl.`video`
             FROM ' . _DB_PREFIX_ . 'homeslider hs
             LEFT JOIN ' . _DB_PREFIX_ . 'homeslider_slides hss ON (hs.id_homeslider_slides = hss.id_homeslider_slides)
             LEFT JOIN ' . _DB_PREFIX_ . 'homeslider_slides_lang hssl ON (hss.id_homeslider_slides = hssl.id_homeslider_slides)
@@ -680,6 +706,9 @@ class Ps_ImageSlider extends Module implements WidgetInterface
 
         foreach ($slides as &$slide) {
             $slide['image_url'] = $this->context->link->getMediaLink(_MODULE_DIR_ . 'ps_imageslider/images/' . $slide['image']);
+            $slide['video_url'] = !empty($slide['video'])
+                ? $this->context->link->getMediaLink(_MODULE_DIR_ . 'ps_imageslider/images/' . $slide['video'])
+                : '';
             $slide['url'] = $this->validateUrl($slide['url']);
         }
 
@@ -773,7 +802,14 @@ class Ps_ImageSlider extends Module implements WidgetInterface
                         'name' => 'image',
                         'required' => true,
                         'lang' => true,
-                        'desc' => $this->trans('Maximum image size: %s.', [ini_get('upload_max_filesize')], 'Admin.Global'),
+                        'desc' => $this->trans("Taile d'image max : %s. En cas d'upload de vidéo, l'image est utilisée comme vignette de la vidéo en attendant son chargement.", [ini_get('upload_max_filesize')], 'Admin.Global'),
+                    ],
+                    [
+                        'type' => 'file_lang',
+                        'label' => $this->trans('Vidéo', [], 'Admin.Global'),
+                        'name' => 'video',
+                        'lang' => true,
+                        'desc' => $this->trans("Taille de vidéo max : %s.", [ini_get('upload_max_filesize')], 'Admin.Global'),
                     ],
                     [
                         'type' => 'text',
@@ -987,6 +1023,7 @@ class Ps_ImageSlider extends Module implements WidgetInterface
 
         foreach ($languages as $lang) {
             $fields['image'][$lang['id_lang']] = Tools::getValue('image_' . (int) $lang['id_lang']);
+            $fields['video'][$lang['id_lang']] = Tools::getValue('video_' . (int) $lang['id_lang']);
             $fields['title'][$lang['id_lang']] = Tools::getValue(
                 'title_' . (int) $lang['id_lang'],
                 isset($slide->title[$lang['id_lang']]) ? $slide->title[$lang['id_lang']] : ''
